@@ -1,47 +1,49 @@
-const { Pool } = require('pg');
-require('dotenv').config();
+let feedbackData = [];
 
-if (!process.env.DATABASE_URL) {
-  console.error('DATABASE_URL environment variable is not set. Please set it to your PostgreSQL connection string.');
-  process.exit(1);
+function getNextId() {
+  return feedbackData.length > 0 ? Math.max(...feedbackData.map(f => f.id)) + 1 : 1;
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
-
-pool.on('connect', () => {
-  console.log('Connected to PostgreSQL database.');
-});
-
-pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
-  process.exit(-1);
-});
-
-function initializeDatabase() {
-  const createTableQuery = `
-    CREATE TABLE IF NOT EXISTS feedback (
-      id SERIAL PRIMARY KEY,
-      studentname TEXT NOT NULL,
-      coursecode TEXT NOT NULL,
-      comments TEXT NOT NULL,
-      rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-      createdat TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `;
-
-  pool.query(createTableQuery, (err, res) => {
-    if (err) {
-      console.error('Error creating table:', err);
-      console.error('Error details:', err.message, err.stack);
-    } else {
-      console.log('Feedback table ready.');
+const db = {
+  all: (query, params, callback) => {
+    // Simulate SELECT * FROM feedback ORDER BY createdAt DESC
+    const data = [...feedbackData].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    callback(null, data);
+  },
+  run: (query, params, callback) => {
+    // Simulate INSERT or DELETE
+    if (query.includes('INSERT')) {
+      const [studentName, courseCode, comments, rating] = params;
+      const newFeedback = {
+        id: getNextId(),
+        studentName,
+        courseCode,
+        comments,
+        rating,
+        createdAt: new Date().toISOString()
+      };
+      feedbackData.push(newFeedback);
+      callback.call({ lastID: newFeedback.id }, null);
+    } else if (query.includes('DELETE')) {
+      const [id] = params;
+      const index = feedbackData.findIndex(f => f.id == id);
+      if (index > -1) {
+        feedbackData.splice(index, 1);
+        callback.call({ changes: 1 }, null);
+      } else {
+        callback.call({ changes: 0 }, null);
+      }
     }
-  });
-}
+  },
+  get: (query, params, callback) => {
+    // Simulate stats query
+    const totalFeedback = feedbackData.length;
+    const averageRating = totalFeedback > 0 ? feedbackData.reduce((sum, f) => sum + f.rating, 0) / totalFeedback : 0;
+    const totalCourses = new Set(feedbackData.map(f => f.courseCode)).size;
+    callback(null, { totalFeedback, averageRating, totalCourses });
+  }
+};
 
-initializeDatabase();
+console.log('Using in-memory database.');
 
-module.exports = pool;
+module.exports = db;

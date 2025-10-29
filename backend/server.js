@@ -14,14 +14,14 @@ app.use(express.json());
 
 // GET all feedback
 app.get('/api/feedback', (req, res) => {
-  const query = 'SELECT * FROM feedback ORDER BY createdat DESC';
+  const query = 'SELECT * FROM Feedback ORDER BY createdAt DESC';
 
-  db.query(query, (err, result) => {
+  db.all(query, [], (err, rows) => {
     if (err) {
       console.error('Error fetching feedback:', err.message);
       return res.status(500).json({ error: 'Failed to fetch feedback' });
     }
-    res.json(result.rows);
+    res.json(rows);
   });
 });
 
@@ -39,19 +39,18 @@ app.post('/api/feedback', (req, res) => {
   }
 
   const query = `
-    INSERT INTO feedback (studentname, coursecode, comments, rating)
-    VALUES ($1, $2, $3, $4)
-    RETURNING id
+    INSERT INTO Feedback (studentName, courseCode, comments, rating)
+    VALUES (?, ?, ?, ?)
   `;
 
-  db.query(query, [studentName, courseCode, comments, rating], (err, result) => {
+  db.run(query, [studentName, courseCode, comments, rating], function(err) {
     if (err) {
       console.error('Error inserting feedback:', err.message);
       return res.status(500).json({ error: 'Failed to submit feedback' });
     }
 
     res.status(201).json({
-      id: result.rows[0].id,
+      id: this.lastID,
       studentName,
       courseCode,
       comments,
@@ -65,15 +64,15 @@ app.post('/api/feedback', (req, res) => {
 app.delete('/api/feedback/:id', (req, res) => {
   const { id } = req.params;
 
-  const query = 'DELETE FROM feedback WHERE id = $1';
+  const query = 'DELETE FROM Feedback WHERE id = ?';
 
-  db.query(query, [id], (err, result) => {
+  db.run(query, [id], function(err) {
     if (err) {
       console.error('Error deleting feedback:', err.message);
       return res.status(500).json({ error: 'Failed to delete feedback' });
     }
 
-    if (result.rowCount === 0) {
+    if (this.changes === 0) {
       return res.status(404).json({ error: 'Feedback not found' });
     }
 
@@ -82,34 +81,37 @@ app.delete('/api/feedback/:id', (req, res) => {
 });
 
 // GET dashboard stats
-app.get('/api/dashboard', async (req, res) => {
-  try {
-    const statsQuery = `
-      SELECT
-        COUNT(*) as totalfeedback,
-        AVG(rating) as averagerating,
-        COUNT(DISTINCT coursecode) as totalcourses
-      FROM feedback
-    `;
+app.get('/api/dashboard', (req, res) => {
+  const statsQuery = `
+    SELECT
+      COUNT(*) as totalFeedback,
+      AVG(rating) as averageRating,
+      COUNT(DISTINCT courseCode) as totalCourses
+    FROM Feedback
+  `;
 
-    const recentQuery = 'SELECT * FROM feedback ORDER BY createdat DESC LIMIT 5';
+  const recentQuery = 'SELECT * FROM Feedback ORDER BY createdAt DESC LIMIT 5';
 
-    const statsResult = await db.query(statsQuery);
-    const stats = statsResult.rows[0];
+  db.get(statsQuery, [], (err, stats) => {
+    if (err) {
+      console.error('Error fetching stats:', err.message);
+      return res.status(500).json({ error: 'Failed to fetch dashboard data' });
+    }
 
-    const recentResult = await db.query(recentQuery);
-    const recentFeedback = recentResult.rows;
+    db.all(recentQuery, [], (err, recentFeedback) => {
+      if (err) {
+        console.error('Error fetching recent feedback:', err.message);
+        return res.status(500).json({ error: 'Failed to fetch dashboard data' });
+      }
 
-    res.json({
-      totalFeedback: parseInt(stats.totalfeedback) || 0,
-      averageRating: stats.averagerating ? parseFloat(parseFloat(stats.averagerating).toFixed(2)) : 0,
-      totalCourses: parseInt(stats.totalcourses) || 0,
-      recentFeedback
+      res.json({
+        totalFeedback: stats.totalFeedback || 0,
+        averageRating: stats.averageRating ? parseFloat(stats.averageRating.toFixed(2)) : 0,
+        totalCourses: stats.totalCourses || 0,
+        recentFeedback
+      });
     });
-  } catch (err) {
-    console.error('Error fetching dashboard data:', err.message);
-    res.status(500).json({ error: 'Failed to fetch dashboard data' });
-  }
+  });
 });
 
 // Error handling middleware
