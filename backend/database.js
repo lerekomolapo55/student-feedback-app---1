@@ -1,6 +1,11 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL environment variable is not set. Please set it to your PostgreSQL connection string.');
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -29,7 +34,8 @@ function initializeDatabase() {
 
   pool.query(createTableQuery, (err, res) => {
     if (err) {
-      console.error('Error creating table:', err.message);
+      console.error('Error creating table:', err);
+      console.error('Error details:', err.message, err.stack);
     } else {
       console.log('Feedback table ready.');
     }
